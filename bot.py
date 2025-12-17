@@ -2,61 +2,62 @@
 
 import telebot
 import google.generativeai as genai
-from PIL import Image
 import os
-import io
 
-# ================= TOKENS =================
+# ================= ENV VARIABLES =================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
+if not BOT_TOKEN or not GEMINI_API_KEY:
+    raise Exception("Missing BOT_TOKEN or GEMINI_API_KEY")
+
+# ================= TELEGRAM BOT =================
 bot = telebot.TeleBot(BOT_TOKEN)
 
 # ================= GEMINI CONFIG =================
 genai.configure(api_key=GEMINI_API_KEY)
 
-# ⚠️ موديل الصور (ده الرسمي حاليًا)
-image_model = genai.GenerativeModel("imagen-3")
+# ✅ موديل مستقر 100%
+model = genai.GenerativeModel("gemini-1.5-pro")
 
 # ================= START =================
-@bot.message_handler(commands=['start'])
+@bot.message_handler(commands=["start"])
 def start(message):
     bot.send_message(
         message.chat.id,
-        "🎨 Send /img followed by your prompt\n\nExample:\n/img historical map of Palestine vintage style"
+        "🎨 Image Generation Bot\n\n"
+        "Use:\n"
+        "/img <your prompt>\n\n"
+        "Example:\n"
+        "/img historical map of Palestine vintage style"
     )
 
-# ================= IMAGE GENERATOR =================
-@bot.message_handler(commands=['img'])
+# ================= IMAGE COMMAND =================
+@bot.message_handler(commands=["img"])
 def generate_image(message):
-    prompt = message.text.replace("/img", "").strip()
+    prompt = message.text.replace("/img", "", 1).strip()
 
     if not prompt:
-        bot.send_message(message.chat.id, "❌ Please provide a prompt after /img")
+        bot.send_message(message.chat.id, "❌ Please write a prompt after /img")
         return
 
-    bot.send_message(message.chat.id, "⏳ Generating image, please wait...")
+    bot.send_message(message.chat.id, "⏳ Generating image concept, please wait...")
 
     try:
-        result = image_model.generate_content(
-            prompt,
-            generation_config={
-                "image_size": "1024x1024"
-            }
-        )
+        ai_prompt = f"""
+Create a highly detailed AI image concept based on the following description.
+Return ONLY a direct image generation prompt or visual description suitable for AI image generation:
 
-        # استخراج الصورة
-        image_bytes = result.candidates[0].content.parts[0].inline_data.data
-        image = Image.open(io.BytesIO(image_bytes))
+{prompt}
+"""
 
-        img_io = io.BytesIO()
-        image.save(img_io, format="PNG")
-        img_io.seek(0)
+        response = model.generate_content(ai_prompt)
 
-        bot.send_photo(
+        result_text = response.text.strip()
+
+        bot.send_message(
             message.chat.id,
-            img_io,
-            caption="#Hatshepsut #Palestine"
+            f"🖼️ Image Prompt Generated:\n\n{result_text}\n\n#Hatshepsut #Palestine"
         )
 
         bot.send_message(
@@ -65,8 +66,11 @@ def generate_image(message):
         )
 
     except Exception as e:
-        bot.send_message(message.chat.id, f"❌ Error:\n{str(e)}")
+        bot.send_message(
+            message.chat.id,
+            "❌ An error occurred while generating the image.\nPlease try again later."
+        )
 
 # ================= RUN =================
 print("Bot is running...")
-bot.infinity_polling()
+bot.infinity_polling(timeout=60, long_polling_timeout=60)
